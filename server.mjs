@@ -9,7 +9,18 @@ import { createAuth } from './auth.mjs';
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const cliguard = require('./vendor/cliguard.cjs');
-const request = createTransport(cliguard);
+let lastSearchResponse = null;
+const request = createTransport(cliguard, 18000, { onResponse(record) {
+  if (record.path.endsWith('/searchProductByAgent')) lastSearchResponse = record;
+  try {
+    const runtime = path.join(directory, '.runtime');
+    const log = path.join(runtime, 'upstream.jsonl');
+    fs.mkdirSync(runtime, { recursive: true, mode: 0o700 });
+    if (fs.existsSync(log) && fs.statSync(log).size > 256 * 1024) fs.truncateSync(log);
+    fs.appendFileSync(log, JSON.stringify(record) + '\n', { mode: 0o600 });
+    fs.chmodSync(log, 0o600);
+  } catch { /* Local diagnostics are optional. */ }
+} });
 const auth = createAuth(request, path.join(directory, '.runtime'));
 const api = createMeituanApi(request, auth.getToken);
 const publicDir = path.join(directory, 'public');
@@ -43,7 +54,7 @@ const server = http.createServer(async (req, res) => {
   if (!sameOrigin(req)) return json(res, 403, { ok: false, error: { code: 'ORIGIN_REJECTED', message: '此服务仅供本机页面访问' } });
   const pathname = new URL(req.url, `http://127.0.0.1:${actualPort}`).pathname;
   try {
-    if (req.method === 'GET' && pathname === '/api/status') return json(res, 200, { ok: true, ...auth.state(), service: serviceState });
+    if (req.method === 'GET' && pathname === '/api/status') return json(res, 200, { ok: true, ...auth.state(), service: serviceState, lastSearch: lastSearchResponse });
     if (req.method === 'POST' && pathname.startsWith('/api/')) {
       if (!req.headers['content-type']?.startsWith('application/json')) throw new AppError('请求格式不正确', 'INVALID_CONTENT_TYPE', 415);
       const body = await readBody(req);
@@ -64,7 +75,7 @@ const server = http.createServer(async (req, res) => {
         default:
           throw new AppError('页面功能不存在', 'NOT_FOUND', 404);
       }
-      success();
+      if (pathname !== '/api/auth/logout') success();
       return json(res, 200, { ok: true, data });
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: '不支持的请求方法' } });

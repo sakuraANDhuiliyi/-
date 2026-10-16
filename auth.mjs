@@ -5,6 +5,11 @@ import { AppError, checkResponse, safeWebUrl, cleanMessage, bizCode } from './li
 
 const CLIENT_ID = 'c6f50b5a1e2f4e2bb00a3e2f58df3ced';
 const PASSPORT = 'https://passport.meituan.com';
+const PASSPORT_HEADERS = {
+  Accept: 'application/json, */*',
+  'Cache-Control': 'no-cache',
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+};
 
 export function createAuth(request, runtimeDir, { onChange = () => {} } = {}) {
   const credentialFile = path.join(runtimeDir, 'credentials.json');
@@ -63,7 +68,7 @@ export function createAuth(request, runtimeDir, { onChange = () => {} } = {}) {
     try {
       const url = new URL(`${PASSPORT}/api/account/userauth/check`);
       url.search = new URLSearchParams({ client_id: CLIENT_ID, auth_code: current.authCode, code_verifier: current.verifier }).toString();
-      const response = await request(url.href, { method: 'GET', headers: { 'Cache-Control': 'no-cache' } });
+      const response = await request(url.href, { method: 'GET', headers: PASSPORT_HEADERS });
       if (session !== current) return;
       const code = bizCode(response.data);
       if (![0, 200].includes(code) && response.status === 200 && ![101000].includes(code)) {
@@ -114,7 +119,7 @@ export function createAuth(request, runtimeDir, { onChange = () => {} } = {}) {
       const challenge = crypto.createHash('sha256').update(verifier).digest('hex');
       const url = new URL(`${PASSPORT}/api/account/userauth/code`);
       url.search = new URLSearchParams({ client_id: CLIENT_ID, code_challenge: challenge }).toString();
-      const response = await request(url.href, { method: 'GET', headers: { 'Cache-Control': 'no-cache' } });
+      const response = await request(url.href, { method: 'GET', headers: PASSPORT_HEADERS });
       const data = checkResponse(response.data, response.status, { auth: true });
       const authUrl = safeWebUrl(data?.shortLink);
       if (!data?.authCode || !authUrl) throw new AppError('授权接口未返回可用登录链接', 'INVALID_AUTH_RESPONSE');

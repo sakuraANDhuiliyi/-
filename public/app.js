@@ -50,9 +50,10 @@ function renderAuth(data) {
   const wasAuthenticated = state.auth?.authenticated;
   state.auth = data;
   const waiting = data.login?.status === 'waiting';
+  const queryUnavailable = data.lastSearch?.httpStatus === 403;
   const badge = $('#account-badge');
-  badge.classList.toggle('connected', data.authenticated);
-  badge.lastElementChild.textContent = data.authenticated ? (data.verified ? '已登录 · 连接已验证' : '已登录 · 待搜索验证') : waiting ? '等待扫码' : '尚未登录';
+  badge.classList.toggle('connected', data.authenticated && !queryUnavailable);
+  badge.lastElementChild.textContent = data.authenticated ? (queryUnavailable ? '已登录 · 查询暂不可用' : data.verified ? '已登录 · 连接已验证' : '已登录 · 待搜索验证') : waiting ? '等待扫码' : '尚未登录';
   $('#account-title').textContent = data.authenticated ? '美团账号已连接' : '连接美团账号';
   $('#account-description').textContent = data.authenticated ? '选好位置，就能开始查找团购' : '扫码一次，开始发现附近美味';
   $('#login-button').hidden = data.authenticated;

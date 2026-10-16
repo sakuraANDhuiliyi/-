@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AppError, createMeituanApi, normalizeProducts, checkResponse, validCoordinate, distanceKm } from '../lib.mjs';
+import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import { AppError, createTransport, createMeituanApi, normalizeProducts, checkResponse, validCoordinate, distanceKm } from '../lib.mjs';
 import { createAuth } from '../auth.mjs';
 
 test('搜索在未登录时不发送任何上游请求', async () => {
@@ -49,8 +51,88 @@ test('图片禁用可执行 URL，价格缺失不显示为零元', () => {
 });
 
 test('HTTP 403 不被武断解释为 IP 封禁；登录错误可触发失效处理', () => {
-  assert.throws(() => checkResponse(null, 403), error => error.code === 'UPSTREAM_FORBIDDEN' && /签名/.test(error.message));
+  assert.throws(() => checkResponse(null, 403), error => error.code === 'UPSTREAM_FORBIDDEN' && !/IP|封禁/.test(error.message));
   assert.throws(() => checkResponse({ code: 401, message: 'token expired' }, 200), error => error.code === 'AUTH_EXPIRED' && error.status === 401);
+});
+
+function mockHttps(raw, responseHeaders, observe) {
+  return (url, options, callback) => {
+    const request = new EventEmitter();
+    request.setTimeout = () => request;
+    request.end = payload => {
+      observe?.({ url, options, payload });
+      queueMicrotask(() => {
+        const response = new EventEmitter();
+        response.statusCode = 200;
+        response.headers = responseHeaders;
+        callback(response);
+        response.emit('data', Buffer.from(raw));
+        response.emit('end');
+      });
+    };
+    return request;
+  };
+}
+
+test('HTTP 传输按实际 UTF-8 字节签名，业务请求头与原封装保持一致', async () => {
+  let sent, signArgs;
+  const records = [];
+  const guard = {
+    addCommonParams: url => ({ url: url + '?csecplatform=7&csecversion=1.3.1' }),
+    signRequest: (...args) => { signArgs = args; return { mtgsig: 'test-only-signature' }; }
+  };
+  const request = createTransport(guard, 100, {
+    requestImpl: mockHttps('{"code":200,"data":{"token":"response-only-secret"}}', { 'content-type': 'application/json; charset=utf-8', date: new Date().toUTCString(), 'set-cookie': 'private-cookie', 'x-forbid-code': 'private-reference' }, value => { sent = value; }),
+    onResponse: record => records.push(record)
+  });
+  const body = { keyword: '火'.repeat(6000), token: 'request-only-secret' };
+  await request('https://click.meituan.com/cps/ai/product/searchProductByAgent', { body, token: 'header-only-secret' });
+  const bytes = Buffer.from(JSON.stringify(body));
+  assert.equal(sent.payload.toString(), bytes.toString());
+  assert.equal(sent.options.headers['Content-Length'], bytes.length);
+  assert.equal(sent.options.headers.Accept, undefined);
+  assert.equal(sent.options.headers['User-Agent'], undefined);
+  assert.equal(sent.options.headers['X-Requested-With'], 'XMLHttpRequest');
+  assert.deepEqual(signArgs, ['POST', sent.url, crypto.createHash('md5').update(bytes.subarray(0, 16200)).digest('hex')]);
+  const diagnosticText = JSON.stringify(records);
+  for (const secret of ['request-only-secret', 'response-only-secret', 'header-only-secret', 'test-only-signature', 'private-cookie', 'private-reference']) assert.equal(diagnosticText.includes(secret), false);
+  assert.equal(records[0].path, '/cps/ai/product/searchProductByAgent');
+  assert.equal(records[0].responseKind, 'json');
+  assert.equal(records[0].hasForbidCode, true);
+});
+
+test('Passport 显式请求头仍可传递，诊断写入失败不影响真实响应', async () => {
+  let sent;
+  const guard = { addCommonParams: url => ({ url }), signRequest: () => ({ mtgsig: 'test-only-signature' }) };
+  const request = createTransport(guard, 100, {
+    requestImpl: mockHttps('{"code":0}', {}, value => { sent = value; }),
+    onResponse: () => { throw new Error('disk write failed'); }
+  });
+  const result = await request('https://passport.meituan.com/api/account/userauth/check?token=query-only-secret', { method: 'GET', headers: { Accept: 'application/json, */*', 'User-Agent': 'Passport-test' } });
+  assert.equal(sent.options.headers['User-Agent'], 'Passport-test');
+  assert.equal(sent.options.headers.Accept, 'application/json, */*');
+  assert.equal(result.data.code, 0);
+  assert.equal(JSON.stringify(result.diagnostics).includes('query-only-secret'), false);
+});
+
+test('保留超过 300 字符的合法分页游标，拒绝超长输入而不截断', async () => {
+  const cursor = 'cursor'.repeat(80);
+  let sent, calls = 0;
+  const api = createMeituanApi(async (url, options) => { calls++; sent = options.body; return { status: 200, data: { code: 200, success: true, data: { productList: [], isLastPage: true } } }; }, () => 'test-only-token');
+  const input = { keyword: '火锅', lat: 31, lng: 120, cityId: 1, page: 2, queryId: cursor, requestId: cursor };
+  await api.search(input);
+  assert.equal(sent.queryId, cursor);
+  assert.equal(sent.requestId, cursor);
+  await assert.rejects(api.search({ ...input, queryId: 'x'.repeat(2049) }), error => error.code === 'INVALID_CURSOR');
+  assert.equal(calls, 1);
+});
+
+test('搜索遇到上游 403 时保留诊断，且不自动重试或误判 Token 失效', async () => {
+  let calls = 0;
+  const diagnostic = { httpStatus: 403, responseKind: 'html' };
+  const api = createMeituanApi(async () => { calls++; return { status: 403, data: null, diagnostics: diagnostic }; }, () => 'test-only-token');
+  await assert.rejects(api.search({ keyword: '火锅', lat: 31, lng: 120, cityId: 1 }), error => error.code === 'UPSTREAM_FORBIDDEN' && error.diagnostics === diagnostic);
+  assert.equal(calls, 1);
 });
 
 test('无效参数与不完整商品响应不会伪装成搜索成功', async () => {

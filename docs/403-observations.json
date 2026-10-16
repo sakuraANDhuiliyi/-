@@ -1,0 +1,47 @@
+[
+  {
+    "time": "2026-10-16T10:38:30.170Z",
+    "method": "POST",
+    "path": "/cps/ai/product/getLocationByAddress",
+    "httpStatus": 200,
+    "durationMs": 347,
+    "contentType": "application/json",
+    "responseBytes": 139,
+    "responseKind": "json",
+    "upstreamCode": 200,
+    "hasForbidCode": false,
+    "hasForbidReason": false,
+    "retryAfterSeconds": null,
+    "clockSkewSeconds": 0
+  },
+  {
+    "time": "2026-10-16T10:38:30.242Z",
+    "method": "POST",
+    "path": "/cps/ai/product/searchProductByAgent",
+    "httpStatus": 403,
+    "durationMs": 66,
+    "contentType": "text/html",
+    "responseBytes": 150,
+    "responseKind": "html",
+    "upstreamCode": null,
+    "hasForbidCode": true,
+    "hasForbidReason": true,
+    "retryAfterSeconds": null,
+    "clockSkewSeconds": 0
+  },
+  {
+    "time": "2026-10-16T10:40:33.975Z",
+    "method": "POST",
+    "path": "/cps/ai/product/searchProductByAgent",
+    "httpStatus": 403,
+    "durationMs": 239,
+    "contentType": "text/html",
+    "responseBytes": 150,
+    "responseKind": "html",
+    "upstreamCode": null,
+    "hasForbidCode": true,
+    "hasForbidReason": true,
+    "retryAfterSeconds": null,
+    "clockSkewSeconds": 0
+  }
+]

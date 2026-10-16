@@ -2,10 +2,11 @@ import https from 'node:https';
 import crypto from 'node:crypto';
 
 export class AppError extends Error {
-  constructor(message, code = 'SERVICE_ERROR', status = 502) {
+  constructor(message, code = 'SERVICE_ERROR', status = 502, diagnostics = undefined) {
     super(message);
     this.code = code;
     this.status = status;
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -20,8 +21,8 @@ export function bizCode(data) {
   return Number(data?.error?.code ?? data?.code ?? 0);
 }
 
-export function checkResponse(data, httpStatus, { auth = false } = {}) {
-  if (httpStatus === 403) throw new AppError('美团接口拒绝访问（HTTP 403）。可能涉及接口权限、请求签名或访问环境，需要进一步核实。', 'UPSTREAM_FORBIDDEN');
+export function checkResponse(data, httpStatus, { auth = false, diagnostics } = {}) {
+  if (httpStatus === 403) throw new AppError('美团暂时拒绝了本次访问，请稍后重试。', 'UPSTREAM_FORBIDDEN', 502, diagnostics);
   if (httpStatus < 200 || httpStatus >= 300) throw new AppError(`美团接口暂时不可用（HTTP ${httpStatus}）`, 'UPSTREAM_HTTP');
   if (!data || typeof data !== 'object') throw new AppError('美团返回了无法识别的数据', 'INVALID_RESPONSE');
   const code = bizCode(data);
@@ -34,7 +35,7 @@ export function checkResponse(data, httpStatus, { auth = false } = {}) {
   return data.data;
 }
 
-export function createTransport(cliguard, timeout = 18000) {
+export function createTransport(cliguard, timeout = 18000, { onResponse = () => {}, requestImpl = https.request } = {}) {
   return function request(url, { method = 'POST', body, token, headers = {} } = {}) {
     return new Promise((resolve, reject) => {
       const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
@@ -48,16 +49,16 @@ export function createTransport(cliguard, timeout = 18000) {
         reject(new AppError('本地请求签名未能生成，请检查签名组件', 'SIGNATURE_FAILED'));
         return;
       }
+      // Match run.js business headers; Passport supplies its own headers explicitly.
       const requestHeaders = {
-        Accept: 'application/json, */*',
         'X-Requested-With': 'XMLHttpRequest',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         ...signature,
         ...headers
       };
       if (payload) Object.assign(requestHeaders, { 'Content-Type': 'application/json', 'Content-Length': payload.length });
       if (token) requestHeaders.token = token;
-      const req = https.request(signedUrl, { method, headers: requestHeaders }, res => {
+      const startedAt = Date.now();
+      const req = requestImpl(signedUrl, { method, headers: requestHeaders }, res => {
         const chunks = [];
         let length = 0;
         res.on('data', chunk => {
@@ -66,9 +67,27 @@ export function createTransport(cliguard, timeout = 18000) {
           else chunks.push(chunk);
         });
         res.on('end', () => {
+          const bytes = Buffer.concat(chunks);
           let data;
-          try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { data = null; }
-          resolve({ status: res.statusCode, data });
+          try { data = JSON.parse(bytes.toString('utf8')); } catch { data = null; }
+          const contentType = String(res.headers['content-type'] || '').split(';')[0].toLowerCase().slice(0, 80);
+          const serverDate = Date.parse(res.headers.date || '');
+          const retryAfter = /^\d{1,6}$/.test(String(res.headers['retry-after'] || '')) ? Number(res.headers['retry-after']) : null;
+          const upstreamCode = data?.error?.code ?? data?.code;
+          const diagnostics = {
+            time: new Date().toISOString(), method, path: new URL(signedUrl).pathname,
+            httpStatus: res.statusCode, durationMs: Date.now() - startedAt,
+            contentType, responseBytes: bytes.length,
+            responseKind: data !== null ? 'json' : contentType === 'text/html' ? 'html' : 'other',
+            upstreamCode: /^\d{1,10}$/.test(String(upstreamCode ?? '')) ? Number(upstreamCode) : null,
+            hasForbidCode: Boolean(res.headers['x-forbid-code']),
+            hasForbidReason: Boolean(res.headers['x-forbid-reason']),
+            retryAfterSeconds: retryAfter,
+            clockSkewSeconds: Number.isFinite(serverDate) ? Math.round((Date.now() - serverDate) / 1000) : null
+          };
+          // Never include request bodies, query strings, headers, signatures or response bodies.
+          try { onResponse(diagnostics); } catch { /* Diagnostics must not affect requests. */ }
+          resolve({ status: res.statusCode, data, diagnostics });
         });
         res.on('error', () => reject(new AppError('读取美团响应失败，请重试', 'NETWORK_ERROR')));
       });
@@ -118,7 +137,7 @@ export function createMeituanApi(request, getToken) {
     if (authenticated && !token) throw new AppError('请先扫码登录美团账号', 'LOGIN_REQUIRED', 401);
     const withToken = body(token);
     const response = await request(`https://click.meituan.com/cps/ai/product/${path}`, { body: withToken, token: authenticated ? token : undefined });
-    return checkResponse(response.data, response.status);
+    return checkResponse(response.data, response.status, { diagnostics: response.diagnostics });
   };
   return {
     async geocode(address) {
@@ -140,11 +159,14 @@ export function createMeituanApi(request, getToken) {
       const page = Number(input.page ?? 1);
       const radius = Number(input.radius ?? 8);
       if (!Number.isInteger(page) || page < 1 || page > 100 || ![3, 5, 8, 15].includes(radius)) throw new AppError('搜索参数无效', 'INVALID_SEARCH', 400);
+      for (const name of ['queryId', 'requestId']) {
+        if (input[name] != null && String(input[name]).length > 2048) throw new AppError('翻页标识过长，请重新搜索', 'INVALID_CURSOR', 400);
+      }
       const data = await call('searchProductByAgent', token => ({
         keyword, page, pageSize: '10', clientSource: 'coupon-fusion-workbuddy',
         userParamDTO: { lat: String(input.lat), lng: String(input.lng), token, cityId: String(input.cityId), app: 216, platform: 1, partner: 1018 },
-        ...(input.queryId ? { queryId: String(input.queryId).slice(0, 300) } : {}),
-        ...(input.requestId ? { requestId: String(input.requestId).slice(0, 300) } : {})
+        ...(input.queryId ? { queryId: String(input.queryId) } : {}),
+        ...(input.requestId ? { requestId: String(input.requestId) } : {})
       }));
       if (!data || !Array.isArray(data.productList)) throw new AppError('搜索接口返回的数据结构与预期不符', 'INVALID_PRODUCTS');
       return { products: normalizeProducts(data.productList, radius), rawCount: data.productList.length, isLastPage: Boolean(data.isLastPage), queryId: String(data.queryId ?? ''), requestId: String(data.requestId ?? ''), page };
