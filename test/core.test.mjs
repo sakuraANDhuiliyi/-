@@ -175,3 +175,47 @@ test('扫码授权的校验对、轮询和本地持久化形成闭环，前端�
 test('服务端错误文案被裁短，调用方无需获得原始响应', () => {
   assert.throws(() => checkResponse({ code: 500, message: 'error token=secret-value' }, 200), error => error instanceof AppError && !error.message.includes('secret-value'));
 });
+
+test('已有凭证时重新授权不复用旧 Token，成功后才替换凭证', async () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'meituan-recovery-test-'));
+  const file = path.join(temporary, 'credentials.json');
+  fs.writeFileSync(file, JSON.stringify({ token: 'old-test-only-token', savedAt: '2026-10-16T09:00:00.000Z' }));
+  const events = [];
+  const auth = createAuth(async url => {
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith('/code')) {
+      assert.equal(parsed.searchParams.has('token'), false);
+      assert.equal(url.includes('old-test-only-token'), false);
+      return { status: 200, data: { code: 0, data: { authCode: 'recovery-test-code', shortLink: 'https://passport.meituan.com/test-recovery' } } };
+    }
+    return { status: 200, data: { code: 0, data: { authStatus: 4, token: 'new-test-only-token' } } };
+  }, temporary, { onChange: state => events.push(state) });
+  try {
+    auth.markVerified();
+    const pending = await auth.start(async () => '');
+    assert.equal(pending.authenticated, true);
+    assert.equal(pending.login.status, 'waiting');
+    assert.equal(auth.getToken(), 'old-test-only-token');
+    assert.equal(JSON.parse(fs.readFileSync(file)).token, 'old-test-only-token');
+    await new Promise(resolve => setTimeout(resolve, 950));
+    assert.equal(auth.getToken(), 'new-test-only-token');
+    assert.equal(JSON.parse(fs.readFileSync(file)).token, 'new-test-only-token');
+    assert.equal(events.at(-1).login.status, 'success');
+    assert.equal(events.at(-1).verified, false);
+    assert.equal(JSON.stringify(events).includes('new-test-only-token'), false);
+  } finally { auth.close(); fs.rmSync(temporary, { recursive: true, force: true }); }
+});
+
+test('用户取消重新授权时保留原凭证', async () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'meituan-recovery-cancel-test-'));
+  const file = path.join(temporary, 'credentials.json');
+  fs.writeFileSync(file, JSON.stringify({ token: 'old-test-only-token', savedAt: '2026-10-16T09:00:00.000Z' }));
+  const auth = createAuth(async url => ({ status: 200, data: { code: 0, data: new URL(url).pathname.endsWith('/code') ? { authCode: 'cancel-test-code', shortLink: 'https://passport.meituan.com/test-cancel' } : { authStatus: 2 } } }), temporary);
+  try {
+    await auth.start(async () => '');
+    await new Promise(resolve => setTimeout(resolve, 950));
+    assert.equal(auth.state().login.status, 'failed');
+    assert.equal(auth.getToken(), 'old-test-only-token');
+    assert.equal(JSON.parse(fs.readFileSync(file)).token, 'old-test-only-token');
+  } finally { auth.close(); fs.rmSync(temporary, { recursive: true, force: true }); }
+});

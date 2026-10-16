@@ -21,7 +21,12 @@ const request = createTransport(cliguard, 18000, { onResponse(record) {
     fs.chmodSync(log, 0o600);
   } catch { /* Local diagnostics are optional. */ }
 } });
-const auth = createAuth(request, path.join(directory, '.runtime'));
+const auth = createAuth(request, path.join(directory, '.runtime'), { onChange(state) {
+  if (state.login?.status === 'success' || !state.authenticated) {
+    lastSearchResponse = null;
+    serviceState = { status: 'unverified', message: state.authenticated ? '已重新授权，等待搜索验证' : '等待登录和查询验证', checkedAt: null };
+  }
+} });
 const api = createMeituanApi(request, auth.getToken);
 const publicDir = path.join(directory, 'public');
 const port = Number(process.env.MEITUAN_WEB_PORT || 3217);

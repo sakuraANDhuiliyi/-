@@ -47,18 +47,22 @@ function setLocation(location) {
   $('#step-location').classList.add('done');
 }
 function renderAuth(data) {
+  const authorizationCompleted = Boolean(data.authenticated && state.auth && (
+    (data.savedAt && state.auth.savedAt && data.savedAt !== state.auth.savedAt) ||
+    (data.login?.status === 'success' && state.auth.login?.status === 'waiting')
+  ));
   const wasAuthenticated = state.auth?.authenticated;
   state.auth = data;
   const waiting = data.login?.status === 'waiting';
   const queryUnavailable = data.lastSearch?.httpStatus === 403;
   const badge = $('#account-badge');
-  badge.classList.toggle('connected', data.authenticated && !queryUnavailable);
-  badge.lastElementChild.textContent = data.authenticated ? (queryUnavailable ? '已登录 · 查询暂不可用' : data.verified ? '已登录 · 连接已验证' : '已登录 · 待搜索验证') : waiting ? '等待扫码' : '尚未登录';
+  badge.classList.toggle('connected', data.authenticated && !queryUnavailable && !waiting);
+  badge.lastElementChild.textContent = waiting ? (data.authenticated ? '等待重新授权' : '等待扫码') : data.authenticated ? (queryUnavailable ? '已登录 · 可重新授权' : data.verified ? '已登录 · 连接已验证' : '已登录 · 待搜索验证') : '尚未登录';
   $('#account-title').textContent = data.authenticated ? '美团账号已连接' : '连接美团账号';
-  $('#account-description').textContent = data.authenticated ? '选好位置，就能开始查找团购' : '扫码一次，开始发现附近美味';
-  $('#login-button').hidden = data.authenticated;
+  $('#account-description').textContent = waiting ? '请用美团 App 确认扫码授权' : queryUnavailable && data.authenticated ? '可尝试重新扫码授权后再查询' : data.authenticated ? '选好位置，就能开始查找团购' : '扫码一次，开始发现附近美味';
+  $('#login-button').hidden = data.authenticated && !queryUnavailable && !waiting;
   $('#login-button').disabled = waiting || state.loggingIn;
-  $('#login-button').textContent = waiting ? '等待美团 App 确认…' : state.loggingIn ? '正在获取登录链接…' : data.login?.status === 'expired' || data.login?.status === 'failed' ? '重新扫码登录 ↗' : '扫码登录美团 ↗';
+  $('#login-button').textContent = waiting ? '等待美团 App 确认…' : state.loggingIn ? '正在获取登录链接…' : data.authenticated && queryUnavailable ? '重新扫码授权 ↗' : data.login?.status === 'expired' || data.login?.status === 'failed' ? '重新扫码登录 ↗' : '扫码登录美团 ↗';
   $('#logout-button').hidden = !data.authenticated;
   $('#login-panel').hidden = !data.login || data.login.status === 'success';
   $('#step-login').classList.toggle('done', data.authenticated);
@@ -76,7 +80,18 @@ function renderAuth(data) {
     const remaining = Math.max(0, Math.ceil((data.login.expiresAt - Date.now()) / 1000));
     $('#login-countdown').textContent = `链接剩余 ${Math.floor(remaining / 60)} 分 ${remaining % 60} 秒 · 授权后自动继续`;
   } else $('#login-countdown').textContent = '';
-  if (data.authenticated && wasAuthenticated === false) feedback('登录成功。输入城市和地址，开始搜索附近团购。', true);
+  if (authorizationCompleted && wasAuthenticated) {
+    // Pagination cursors can belong to the previous authorization. Keep visible
+    // cards for reference, but require a fresh search before loading more pages.
+    state.activeQuery = null;
+    state.page = 0;
+    state.queryId = '';
+    state.requestId = '';
+    state.isLastPage = true;
+    $('#pagination').hidden = true;
+    if (state.products.length) $('#result-description').textContent = '已重新授权，请重新搜索以更新这些结果';
+    feedback('重新授权成功。请重新搜索以更新团购结果。', true);
+  } else if (data.authenticated && wasAuthenticated === false) feedback('登录成功。输入城市和地址，开始搜索附近团购。', true);
   const service = data.service;
   if (service) {
     $('#connection-text').textContent = service.status === 'connected' ? '美团接口已连接' : service.status === 'error' ? '接口连接需检查' : '美团连接待验证';
