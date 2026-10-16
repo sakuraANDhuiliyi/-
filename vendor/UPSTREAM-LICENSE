@@ -1,0 +1,17 @@
+Copyright (c) 2026 Meituan (plugin authors: lidongliang04, jiangxinyu10@meituan.com)
+
+The plugin source code, scripts, and authentication components
+(@mtuser/pt-passport, cliguard) are owned by Meituan and are provided
+"as-is" for personal use of the original plugin.
+
+This repository is a skill packaging (SKILL.md, README, directory layout)
+built on top of the official Meituan plugin. Redistribution or commercial
+use requires permission from Meituan.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.

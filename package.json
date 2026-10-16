@@ -1,0 +1,12 @@
+{
+  "name": "meituan-browser-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地美团团购浏览验证页",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

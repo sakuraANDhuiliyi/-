@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f1">
+  <title>饭点 · 附近团购</title>
+  <meta name="description" content="登录美团，看看附近有什么值得吃的团购。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="饭点首页"><img src="/favicon.svg" alt="" width="36" height="36"><span>饭点<span class="brand-divider">/</span><span class="brand-sub">附近团购</span></span></a>
+    <span class="local-label"><span class="status-dot"></span>本地体验版</span>
+  </header>
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="account-panel">
+        <div class="section-eyebrow">MY ACCOUNT <span>01</span></div>
+        <div class="account-heading"><div class="avatar" aria-hidden="true">饭</div><div><h2 id="account-title">连接美团账号</h2><p id="account-description">扫码一次，开始发现附近美味</p></div></div>
+        <div id="account-badge" class="account-badge"><span class="status-dot"></span><span>尚未登录</span></div>
+        <button type="button" id="login-button" class="button primary full">扫码登录美团 <span aria-hidden="true">↗</span></button>
+        <div id="login-panel" class="login-panel" hidden>
+          <div id="qr-wrapper" class="qr-wrapper" hidden><img id="login-qr" alt="美团账号授权二维码" referrerpolicy="no-referrer"></div>
+          <p id="login-message" class="muted">请用美团 App 扫码确认登录</p>
+          <a id="auth-link" class="text-link" target="_blank" rel="noopener noreferrer" hidden>打开美团授权页面 ↗</a>
+          <p id="login-countdown" class="tiny"></p>
+        </div>
+        <button type="button" id="logout-button" class="button quiet full" hidden>退出当前登录</button>
+        <p class="account-footnote">登录凭证仅保存在这台电脑。扫码登录时请确认美团授权页面的服务协议与隐私说明。</p>
+      </section>
+      <section class="steps-panel">
+        <div class="section-eyebrow">HOW IT WORKS <span>02</span></div>
+        <ol class="steps">
+          <li id="step-login"><span class="step-number">1</span><div><strong>登录美团</strong><p>使用美团 App 扫码授权</p></div></li>
+          <li id="step-location"><span class="step-number">2</span><div><strong>选一个位置</strong><p>输入城市、商圈或街道</p></div></li>
+          <li id="step-browse"><span class="step-number">3</span><div><strong>发现附近团购</strong><p>看看套餐、价格和门店</p></div></li>
+        </ol>
+      </section>
+      <section class="note-panel"><span class="note-icon" aria-hidden="true">✳</span><h3>先看看，慢慢选。</h3><p>这一版专注到店团购浏览。价格为平台返回的团购售价，最终应付以美团结算为准。</p></section>
+      <div class="connection-line"><span class="status-dot" id="connection-dot"></span><span id="connection-text">美团连接待验证</span></div>
+    </aside>
+    <div class="main-column">
+      <section class="hero">
+        <div class="hero-kicker"><span class="mini-line"></span>让选择简单一点</div>
+        <h1>今天，吃点<span class="accent">什么？</span></h1>
+        <p class="hero-description">搜一搜附近的团购，把下一顿的灵感找回来。</p>
+        <div class="hero-art" aria-hidden="true"><div class="art-orbit"></div><svg viewBox="0 0 220 160" fill="none"><path d="M38 78h145c-3 47-27 69-73 69S41 125 38 78Z" fill="#ed693c"/><path d="M38 78c12 13 130 13 145 0" stroke="#d85129" stroke-width="5"/><path d="M67 73c0-17 23-12 23-29s-14-13-14-25m35 54c0-18 23-12 23-29S121 30 121 18" stroke="#e3b992" stroke-width="5" stroke-linecap="round"/><path d="m156 16-25 62m43-58-29 60" stroke="#8a644c" stroke-width="6" stroke-linecap="round"/><path d="M78 151h66" stroke="#ed693c" stroke-width="6" stroke-linecap="round"/><circle cx="40" cy="38" r="6" fill="#efd4aa"/><path d="m191 102 5 5m-5 0 5-5" stroke="#d9aa6a" stroke-width="3" stroke-linecap="round"/></svg></div>
+      </section>
+      <section class="search-panel" aria-labelledby="search-heading">
+        <h2 id="search-heading" class="sr-only">搜索附近团购</h2>
+        <form id="search-form">
+          <div class="address-row"><label for="address" class="input-label"><span aria-hidden="true">⌖</span> 在哪里吃</label><button id="recent-location" type="button" class="text-link small">使用美团最近位置</button></div>
+          <input id="address" name="address" type="text" placeholder="输入城市 + 地址，例如：上海市徐家汇" maxlength="160" autocomplete="off" required>
+          <div class="search-row"><div class="keyword-field"><label for="keyword" class="sr-only">想吃什么</label><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="keyword" name="keyword" type="search" placeholder="菜系、门店或套餐名称" value="火锅" maxlength="80" required></div><button id="search-button" type="submit" class="button primary">发现团购 <span aria-hidden="true">→</span></button></div>
+          <div class="search-options"><div class="quick-keywords" aria-label="快捷关键词"><span>想吃</span><button type="button" data-keyword="火锅" class="chip active">火锅</button><button type="button" data-keyword="烤肉" class="chip">烤肉</button><button type="button" data-keyword="咖啡" class="chip">咖啡</button><button type="button" data-keyword="双人餐" class="chip">双人餐</button><button type="button" data-keyword="自助餐" class="chip">自助餐</button></div><label class="radius-label" for="radius">范围 <select id="radius" name="radius"><option value="3">3 公里</option><option value="5">5 公里</option><option value="8" selected>8 公里</option><option value="15">15 公里</option></select></label></div>
+        </form>
+        <div id="location-summary" class="location-summary" hidden><span aria-hidden="true">✓</span><span id="location-text"></span></div>
+      </section>
+      <div id="feedback" class="feedback" role="status" aria-live="polite" hidden><span id="feedback-message"></span><button id="feedback-dismiss" type="button" aria-label="关闭提示">×</button></div>
+      <section class="results-section" aria-labelledby="results-heading" aria-busy="false">
+        <div class="results-heading"><div><h2 id="results-heading">附近的好味道<span id="result-count" class="count" hidden></span></h2><p id="result-description">从一份心动的团购开始</p></div><span class="results-label">到店美食 · 团购售价</span></div>
+        <div id="empty-state" class="empty-state"><div class="empty-art" aria-hidden="true"><svg viewBox="0 0 100 90"><rect x="22" y="13" width="57" height="65" rx="9" fill="#fff" stroke="#ded9cf" stroke-width="2" transform="rotate(8 50 45)"/><rect x="17" y="10" width="57" height="65" rx="9" fill="#fffdf7" stroke="#cfc7b8" stroke-width="2" transform="rotate(-7 45 42)"/><circle cx="46" cy="37" r="13" fill="#fbe5d5"/><path d="M37 35h18c-1 7-4 11-9 11s-8-4-9-11Z" fill="#e88c64"/><path d="M31 60h28m-21 6h14" stroke="#ddd6c7" stroke-width="3" stroke-linecap="round"/></svg></div><h3 id="empty-title">附近的美味，等你发现</h3><p id="empty-description">登录美团，选好位置，就能浏览真实团购。<br>火锅、烤肉、咖啡……从你想吃的开始。</p><span class="empty-tag">每一条结果都来自美团实时搜索</span></div>
+        <div id="product-grid" class="product-grid" hidden></div>
+        <div id="loading-state" class="loading-state" role="status" hidden><span class="spinner"></span><span id="loading-message">正在搜索附近团购…</span></div>
+        <div class="pagination" id="pagination" hidden><span id="page-description"></span><button class="button secondary" id="load-more" type="button">再看看更多 <span aria-hidden="true">↓</span></button></div>
+      </section>
+      <footer class="page-footer"><span>饭点 · 把美味留给下一顿</span><span>数据来自美团 · 本地个人验证</span></footer>
+    </div>
+  </main>
+  <template id="product-template"><article class="product-card"><div class="product-image-wrap"><img class="product-image" loading="lazy" alt="" referrerpolicy="no-referrer"><div class="image-fallback" hidden><img src="/favicon.svg" alt="" width="44" height="44"><span>美味即将登场</span></div><span class="distance-pill"></span></div><div class="product-content"><div class="shop-row"><span class="shop-name"></span><span class="score"></span></div><h3 class="product-title"></h3><div class="product-bottom"><div class="price"><span class="currency">¥</span><strong></strong><span class="price-caption">团购售价</span></div><span class="visit-tag">到店享用</span></div></div></article></template>
+</body>
+</html>
